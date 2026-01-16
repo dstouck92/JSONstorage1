@@ -39,17 +39,7 @@ export default function UserProfile() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
-  const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState('');
-  const [spotifyConnected, setSpotifyConnected] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    fetch('/api/spotify/status', { credentials: 'include' })
-      .then(res => res.json())
-      .then(data => setSpotifyConnected(data.connected))
-      .catch(() => setSpotifyConnected(false));
-  }, []);
-
+  
   useEffect(() => {
     if (authLoading) return;
     
@@ -73,30 +63,7 @@ export default function UserProfile() {
     }
   };
 
-  const handleSpotifySync = async () => {
-    setSyncing(true);
-    setSyncMessage('');
-    try {
-      const res = await fetch('/api/spotify/sync', { 
-        method: 'POST', 
-        credentials: 'include' 
-      });
-      const result = await res.json();
-      if (res.ok) {
-        setSyncMessage(`Synced ${result.imported} tracks from Spotify!`);
-        const userId = authUser?.id || '';
-        const newData = await fetch(`/api/user/${userId}`, { credentials: 'include' }).then(r => r.json());
-        setData(newData);
-      } else {
-        setSyncMessage(result.error || 'Failed to sync');
-      }
-    } catch (e) {
-      setSyncMessage('Failed to sync with Spotify');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
+  
   if (loading || authLoading) {
     return <div className="text-center py-12">Loading...</div>;
   }
@@ -155,32 +122,13 @@ export default function UserProfile() {
               Member since {new Date(data.user.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
             </p>
           </div>
-          {spotifyConnected === false ? (
-            <div className="text-right">
-              <Link 
-                to="/upload"
-                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
-              >
-                Upload Data
-              </Link>
-              <p className="text-xs text-gray-500 mt-1">Spotify sync coming soon</p>
-            </div>
-          ) : (
-            <button 
-              onClick={handleSpotifySync}
-              disabled={syncing || spotifyConnected === null}
-              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50"
-            >
-              <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
-            </button>
-          )}
+          <Link 
+            to="/upload"
+            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
+          >
+            Upload Data
+          </Link>
         </div>
-        
-        {syncMessage && (
-          <div className={`mt-3 text-sm ${syncMessage.includes('Failed') ? 'text-red-600' : 'text-green-600'}`}>
-            {syncMessage}
-          </div>
-        )}
         
         {authUser && !authUser.hasPassword && (
           <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
