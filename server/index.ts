@@ -49,71 +49,6 @@ function authMiddleware(req: AuthRequest, res: express.Response, next: express.N
 
 app.use(authMiddleware);
 
-const DEMO_USER_ID = 1;
-const DEMO_USERNAME = 'David Stouck';
-
-async function ensureDemoUser() {
-  const result = await pool.query('SELECT id FROM users WHERE id = $1', [DEMO_USER_ID]);
-  if (result.rows.length === 0) {
-    await pool.query(
-      'INSERT INTO users (id, username, avatar) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
-      [DEMO_USER_ID, DEMO_USERNAME, 'goat']
-    );
-  }
-}
-
-async function loadDemoData() {
-  const result = await pool.query('SELECT COUNT(*) FROM streaming_history WHERE user_id = $1', [DEMO_USER_ID]);
-  if (parseInt(result.rows[0].count) > 0) {
-    console.log('Demo data already loaded');
-    return;
-  }
-
-  console.log('Loading demo data from JSON files...');
-  const files = fs.readdirSync('.').filter(f => f.includes('Streaming_History_Audio') && f.endsWith('.json'));
-  
-  let totalRecords = 0;
-  for (const file of files) {
-    try {
-      const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
-      const validRecords = data.filter((r: any) => r.master_metadata_track_name && r.ms_played > 0);
-      
-      const BATCH_SIZE = 500;
-      for (let i = 0; i < validRecords.length; i += BATCH_SIZE) {
-        const batch = validRecords.slice(i, i + BATCH_SIZE);
-        const values: any[] = [];
-        const placeholders: string[] = [];
-        
-        batch.forEach((record: any, idx: number) => {
-          const offset = idx * 8;
-          placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`);
-          values.push(
-            DEMO_USER_ID,
-            record.ts,
-            record.master_metadata_track_name,
-            record.master_metadata_album_artist_name,
-            record.master_metadata_album_album_name,
-            record.ms_played,
-            record.spotify_track_uri,
-            record.platform
-          );
-        });
-        
-        await pool.query(
-          `INSERT INTO streaming_history (user_id, ts, track_name, artist_name, album_name, ms_played, spotify_track_uri, platform)
-           VALUES ${placeholders.join(', ')}`,
-          values
-        );
-        totalRecords += batch.length;
-      }
-      console.log(`Loaded ${file} (${validRecords.length} records)`);
-    } catch (e) {
-      console.error(`Error loading ${file}:`, e);
-    }
-  }
-  console.log(`Loaded ${totalRecords} total records`);
-}
-
 async function syncAllUsersFromFiles() {
   console.log('Syncing all users from JSON files...');
   
@@ -402,7 +337,7 @@ app.post('/api/spotify/sync', async (req: AuthRequest, res) => {
 
 app.get('/api/user/:userId?', async (req: AuthRequest, res) => {
   try {
-    const userId = req.params.userId || DEMO_USER_ID;
+    const userId = req.params.userId || req.userId || 1;
     
     let userQuery;
     if (typeof userId === 'string' && isNaN(parseInt(userId))) {
@@ -473,7 +408,7 @@ app.get('/api/user/:userId?', async (req: AuthRequest, res) => {
 
 app.get('/api/artist/:artistName', async (req: AuthRequest, res) => {
   try {
-    const currentUserId = req.userId || DEMO_USER_ID;
+    const currentUserId = req.userId || 1;
     const artistName = decodeURIComponent(req.params.artistName);
     
     const leaderboardQuery = await pool.query(`
@@ -536,7 +471,7 @@ app.get('/api/artist/:artistName', async (req: AuthRequest, res) => {
 
 app.post('/api/artist/:artistName/comment', async (req: AuthRequest, res) => {
   try {
-    const userId = req.userId || DEMO_USER_ID;
+    const userId = req.userId || 1;
     const artistName = decodeURIComponent(req.params.artistName);
     const { content } = req.body;
     
@@ -563,7 +498,7 @@ app.post('/api/artist/:artistName/comment', async (req: AuthRequest, res) => {
 
 app.post('/api/comment/:commentId/like', async (req: AuthRequest, res) => {
   try {
-    const userId = req.userId || DEMO_USER_ID;
+    const userId = req.userId || 1;
     const commentId = parseInt(req.params.commentId);
     
     await pool.query(
