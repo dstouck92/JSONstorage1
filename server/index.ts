@@ -6,6 +6,10 @@ import pool, { initDb } from './db';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import cookieParser from 'cookie-parser';
+import { getSpotifyClient, isSpotifyConnected } from './spotify';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,14 +17,37 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
-app.use(cors());
+const JWT_SECRET = process.env.JWT_SECRET || 'herd-secret-key-change-in-production';
+
+app.use(cors({ credentials: true, origin: true }));
 app.use(express.json());
+app.use(cookieParser());
 
 const isProduction = process.env.NODE_ENV === 'production';
 const clientPath = path.join(__dirname, '../client');
 if (isProduction) {
   app.use(express.static(clientPath));
 }
+
+interface AuthRequest extends express.Request {
+  userId?: number;
+  username?: string;
+}
+
+function authMiddleware(req: AuthRequest, res: express.Response, next: express.NextFunction) {
+  const token = req.cookies?.token;
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as { userId: number; username: string };
+      req.userId = decoded.userId;
+      req.username = decoded.username;
+    } catch (e) {
+    }
+  }
+  next();
+}
+
+app.use(authMiddleware);
 
 const DEMO_USER_ID = 1;
 const DEMO_USERNAME = 'David Stouck';
@@ -87,7 +114,204 @@ async function loadDemoData() {
   console.log(`Loaded ${totalRecords} total records`);
 }
 
-app.get('/api/user/:userId?', async (req, res) => {
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    if (!username || username.trim().length < 2) {
+      return res.status(400).json({ error: 'Username must be at least 2 characters' });
+    }
+    
+    const existing = await pool.query('SELECT id FROM users WHERE username ILIKE $1', [username.trim()]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+    
+    const passwordHash = password ? await bcrypt.hash(password, 10) : null;
+    
+    const result = await pool.query(
+      'INSERT INTO users (username, password_hash, avatar) VALUES ($1, $2, $3) RETURNING id, username, avatar',
+      [username.trim(), passwordHash, 'goat']
+    );
+    
+    const user = result.rows[0];
+    const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
+    
+    res.cookie('token', token, { 
+      httpOnly: true, 
+      secure: isProduction,
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000
+    });
+    
+    res.json({ user: { id: user.id, username: user.username, avatar: user.avatar } });
+  } catch (err) {
+    console.error('Error signing up:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    const result = await pool.query('SELECT * FROM users WHERE username ILIKE $1', [username]);
+    
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    
+    const user = result.rows[0];
+    
+    if (user.password_hash) {
+      if (!password) {
+        return res.status(401).json({ error: 'Password required' });
+      }
+      const valid = await bcrypt.compare(password, user.password_hash);
+      if (!valid) {
+        return res.status(401).json({ error: 'Invalid password' });
+      }
+    }
+    
+    const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
+    
+    res.cookie('token', token, { 
+      httpOnly: true, 
+      secure: isProduction,
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000
+    });
+    
+    res.json({ 
+      user: { 
+        id: user.id, 
+        username: user.username, 
+        avatar: user.avatar,
+        hasPassword: !!user.password_hash,
+        spotifyConnected: user.spotify_connected
+      } 
+    });
+  } catch (err) {
+    console.error('Error logging in:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/auth/set-password', async (req: AuthRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    const { password } = req.body;
+    
+    if (!password || password.length < 4) {
+      return res.status(400).json({ error: 'Password must be at least 4 characters' });
+    }
+    
+    const passwordHash = await bcrypt.hash(password, 10);
+    
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, req.userId]);
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error setting password:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('token');
+  res.json({ success: true });
+});
+
+app.get('/api/auth/me', async (req: AuthRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.json({ user: null });
+    }
+    
+    const result = await pool.query(
+      'SELECT id, username, avatar, password_hash IS NOT NULL as has_password, spotify_connected FROM users WHERE id = $1',
+      [req.userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({ user: null });
+    }
+    
+    const user = result.rows[0];
+    res.json({ 
+      user: { 
+        id: user.id, 
+        username: user.username, 
+        avatar: user.avatar,
+        hasPassword: user.has_password,
+        spotifyConnected: user.spotify_connected
+      } 
+    });
+  } catch (err) {
+    console.error('Error getting current user:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/spotify/status', async (req, res) => {
+  try {
+    const connected = await isSpotifyConnected();
+    res.json({ connected });
+  } catch (err) {
+    res.json({ connected: false });
+  }
+});
+
+app.post('/api/spotify/sync', async (req: AuthRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    const connected = await isSpotifyConnected();
+    if (!connected) {
+      return res.status(400).json({ error: 'Spotify not connected' });
+    }
+    
+    const spotify = await getSpotifyClient();
+    const recentTracks = await spotify.player.getRecentlyPlayedTracks(50);
+    
+    let imported = 0;
+    for (const item of recentTracks.items) {
+      const track = item.track;
+      const playedAt = new Date(item.played_at);
+      
+      await pool.query(
+        `INSERT INTO streaming_history (user_id, ts, track_name, artist_name, album_name, ms_played, spotify_track_uri, platform)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT DO NOTHING`,
+        [
+          req.userId,
+          playedAt,
+          track.name,
+          track.artists[0]?.name || 'Unknown Artist',
+          track.album?.name || 'Unknown Album',
+          track.duration_ms,
+          track.uri,
+          'spotify_api'
+        ]
+      );
+      imported++;
+    }
+    
+    await pool.query('UPDATE users SET spotify_connected = TRUE WHERE id = $1', [req.userId]);
+    
+    res.json({ success: true, imported });
+  } catch (err) {
+    console.error('Error syncing Spotify:', err);
+    res.status(500).json({ error: 'Failed to sync Spotify data' });
+  }
+});
+
+app.get('/api/user/:userId?', async (req: AuthRequest, res) => {
   try {
     const userId = req.params.userId || DEMO_USER_ID;
     
@@ -158,8 +382,9 @@ app.get('/api/user/:userId?', async (req, res) => {
   }
 });
 
-app.get('/api/artist/:artistName', async (req, res) => {
+app.get('/api/artist/:artistName', async (req: AuthRequest, res) => {
   try {
+    const currentUserId = req.userId || DEMO_USER_ID;
     const artistName = decodeURIComponent(req.params.artistName);
     
     const leaderboardQuery = await pool.query(`
@@ -203,7 +428,7 @@ app.get('/api/artist/:artistName', async (req, res) => {
         avatar: r.avatar,
         minutes: Math.round(parseInt(r.total_ms) / 60000),
         songCount: parseInt(r.song_count),
-        isCurrentUser: r.user_id === DEMO_USER_ID
+        isCurrentUser: r.user_id === currentUserId
       })),
       comments: commentsQuery.rows.map(c => ({
         id: c.id,
@@ -220,17 +445,18 @@ app.get('/api/artist/:artistName', async (req, res) => {
   }
 });
 
-app.post('/api/artist/:artistName/comment', async (req, res) => {
+app.post('/api/artist/:artistName/comment', async (req: AuthRequest, res) => {
   try {
+    const userId = req.userId || DEMO_USER_ID;
     const artistName = decodeURIComponent(req.params.artistName);
     const { content } = req.body;
     
     const result = await pool.query(
       'INSERT INTO comments (user_id, artist_name, content) VALUES ($1, $2, $3) RETURNING *',
-      [DEMO_USER_ID, artistName, content]
+      [userId, artistName, content]
     );
     
-    const user = await pool.query('SELECT username, avatar FROM users WHERE id = $1', [DEMO_USER_ID]);
+    const user = await pool.query('SELECT username, avatar FROM users WHERE id = $1', [userId]);
     
     res.json({
       id: result.rows[0].id,
@@ -246,13 +472,14 @@ app.post('/api/artist/:artistName/comment', async (req, res) => {
   }
 });
 
-app.post('/api/comment/:commentId/like', async (req, res) => {
+app.post('/api/comment/:commentId/like', async (req: AuthRequest, res) => {
   try {
+    const userId = req.userId || DEMO_USER_ID;
     const commentId = parseInt(req.params.commentId);
     
     await pool.query(
       'INSERT INTO comment_likes (comment_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-      [commentId, DEMO_USER_ID]
+      [commentId, userId]
     );
     
     await pool.query(

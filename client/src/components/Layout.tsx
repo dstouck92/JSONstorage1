@@ -1,10 +1,13 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const isArtistPage = location.pathname.startsWith('/artist');
 
   const handleSearch = (e: React.FormEvent) => {
@@ -17,6 +20,12 @@ export default function Layout() {
       }
       setSearchQuery('');
     }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+    setShowUserMenu(false);
   };
 
   return (
@@ -36,6 +45,53 @@ export default function Layout() {
               className="w-full px-4 py-2 rounded-full bg-gray-100 border-none focus:outline-none focus:ring-2 focus:ring-green-400 text-sm"
             />
           </form>
+          <div className="ml-4 relative">
+            {user ? (
+              <>
+                <button
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+                >
+                  <span className="text-lg">🐐</span>
+                  <span className="text-sm font-medium text-gray-700 max-w-[100px] truncate">
+                    {user.username}
+                  </span>
+                </button>
+                {showUserMenu && (
+                  <div className="absolute right-0 top-12 bg-white rounded-lg shadow-lg border py-2 min-w-[160px]">
+                    <Link
+                      to="/profile"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      onClick={() => setShowUserMenu(false)}
+                    >
+                      My Profile
+                    </Link>
+                    <Link
+                      to="/upload"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      onClick={() => setShowUserMenu(false)}
+                    >
+                      Upload Data
+                    </Link>
+                    <hr className="my-1" />
+                    <button
+                      onClick={handleLogout}
+                      className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                    >
+                      Log Out
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <Link
+                to="/login"
+                className="px-4 py-2 rounded-full bg-gradient-to-r from-emerald-500 to-green-600 text-white text-sm font-medium hover:from-emerald-600 hover:to-green-700 transition-all"
+              >
+                Log In
+              </Link>
+            )}
+          </div>
         </div>
       </header>
 

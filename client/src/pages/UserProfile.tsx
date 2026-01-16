@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const AVATARS = ['goat', 'cow', 'sheep', 'pig', 'horse', 'chicken', 'duck', 'rabbit'];
 
@@ -30,20 +31,82 @@ interface UserData {
 }
 
 export default function UserProfile() {
+  const { user: authUser, loading: authLoading, setPassword } = useAuth();
+  const navigate = useNavigate();
   const [data, setData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAvatars, setShowAvatars] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState('');
 
   useEffect(() => {
-    fetch('/api/user')
+    if (authLoading) return;
+    
+    const userId = authUser?.id || '';
+    fetch(`/api/user/${userId}`, { credentials: 'include' })
       .then(res => res.json())
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [authUser, authLoading]);
 
-  if (loading) {
+  const handleSetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    const result = await setPassword(newPassword);
+    if (result.success) {
+      setShowPasswordModal(false);
+      setNewPassword('');
+    } else {
+      setPasswordError(result.error || 'Failed to set password');
+    }
+  };
+
+  const handleSpotifySync = async () => {
+    setSyncing(true);
+    setSyncMessage('');
+    try {
+      const res = await fetch('/api/spotify/sync', { 
+        method: 'POST', 
+        credentials: 'include' 
+      });
+      const result = await res.json();
+      if (res.ok) {
+        setSyncMessage(`Synced ${result.imported} tracks from Spotify!`);
+        const userId = authUser?.id || '';
+        const newData = await fetch(`/api/user/${userId}`, { credentials: 'include' }).then(r => r.json());
+        setData(newData);
+      } else {
+        setSyncMessage(result.error || 'Failed to sync');
+      }
+    } catch (e) {
+      setSyncMessage('Failed to sync with Spotify');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  if (loading || authLoading) {
     return <div className="text-center py-12">Loading...</div>;
+  }
+
+  if (!authUser) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-6xl mb-4">🐐</div>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome to Herd</h2>
+        <p className="text-gray-600 mb-6">Prove you're the Goat. Log in to see your stats and compete on leaderboards.</p>
+        <Link 
+          to="/login" 
+          className="inline-block bg-gradient-to-r from-emerald-500 to-green-600 text-white px-8 py-3 rounded-lg font-medium hover:from-emerald-600 hover:to-green-700 transition-all"
+        >
+          Get Started
+        </Link>
+      </div>
+    );
   }
 
   if (!data) {
@@ -84,10 +147,34 @@ export default function UserProfile() {
               Member since {new Date(data.user.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
             </p>
           </div>
-          <Link to="/upload" className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
-            <span>Sync Now</span>
-          </Link>
+          <button 
+            onClick={handleSpotifySync}
+            disabled={syncing}
+            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+          >
+            <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
+          </button>
         </div>
+        
+        {syncMessage && (
+          <div className={`mt-3 text-sm ${syncMessage.includes('Failed') ? 'text-red-600' : 'text-green-600'}`}>
+            {syncMessage}
+          </div>
+        )}
+        
+        {authUser && !authUser.hasPassword && (
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-sm text-amber-800">
+              Secure your account by setting a password.{' '}
+              <button 
+                onClick={() => setShowPasswordModal(true)}
+                className="text-amber-600 underline font-medium"
+              >
+                Set password
+              </button>
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -153,6 +240,43 @@ export default function UserProfile() {
           ))}
         </div>
       </div>
+
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Set Your Password</h3>
+            <form onSubmit={handleSetPassword}>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter a password (4+ characters)"
+                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none mb-4"
+                minLength={4}
+                required
+              />
+              {passwordError && (
+                <p className="text-red-600 text-sm mb-4">{passwordError}</p>
+              )}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-emerald-500 text-white rounded-lg font-medium"
+                >
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

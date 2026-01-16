@@ -9,6 +9,9 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
       username VARCHAR(255) UNIQUE NOT NULL,
+      password_hash VARCHAR(255),
+      spotify_id VARCHAR(255),
+      spotify_connected BOOLEAN DEFAULT FALSE,
       avatar VARCHAR(50) DEFAULT 'goat',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
