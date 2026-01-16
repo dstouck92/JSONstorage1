@@ -575,7 +575,7 @@ app.get('/api/users/search', async (req, res) => {
   }
 });
 
-const PORT = isProduction ? 5000 : 3001;
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : (isProduction ? 5000 : 3001);
 
 if (isProduction) {
   app.get('*', (req, res) => {
