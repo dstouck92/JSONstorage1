@@ -5,12 +5,22 @@ import { v4 as uuidv4 } from 'uuid';
 import pool, { initDb } from './db';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
 app.use(cors());
 app.use(express.json());
+
+const isProduction = process.env.NODE_ENV === 'production';
+const clientPath = path.join(__dirname, '../client');
+if (isProduction) {
+  app.use(express.static(clientPath));
+}
 
 const DEMO_USER_ID = 1;
 const DEMO_USERNAME = 'David Stouck';
@@ -277,27 +287,39 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
     }
     
     let totalRecords = 0;
+    const BATCH_SIZE = 500;
+    
     for (const file of files) {
       try {
         const data = JSON.parse(fs.readFileSync(file.path, 'utf-8'));
-        for (const record of data) {
-          if (record.master_metadata_track_name && record.ms_played > 0) {
-            await pool.query(
-              `INSERT INTO streaming_history (user_id, ts, track_name, artist_name, album_name, ms_played, spotify_track_uri, platform)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-              [
-                userId,
-                record.ts,
-                record.master_metadata_track_name,
-                record.master_metadata_album_artist_name,
-                record.master_metadata_album_album_name,
-                record.ms_played,
-                record.spotify_track_uri,
-                record.platform
-              ]
+        const validRecords = data.filter((r: any) => r.master_metadata_track_name && r.ms_played > 0);
+        
+        for (let i = 0; i < validRecords.length; i += BATCH_SIZE) {
+          const batch = validRecords.slice(i, i + BATCH_SIZE);
+          const values: any[] = [];
+          const placeholders: string[] = [];
+          
+          batch.forEach((record: any, idx: number) => {
+            const offset = idx * 8;
+            placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`);
+            values.push(
+              userId,
+              record.ts,
+              record.master_metadata_track_name,
+              record.master_metadata_album_artist_name,
+              record.master_metadata_album_album_name,
+              record.ms_played,
+              record.spotify_track_uri,
+              record.platform
             );
-            totalRecords++;
-          }
+          });
+          
+          await pool.query(
+            `INSERT INTO streaming_history (user_id, ts, track_name, artist_name, album_name, ms_played, spotify_track_uri, platform)
+             VALUES ${placeholders.join(', ')}`,
+            values
+          );
+          totalRecords += batch.length;
         }
         fs.unlinkSync(file.path);
       } catch (e) {
@@ -326,7 +348,13 @@ app.get('/api/users/search', async (req, res) => {
   }
 });
 
-const PORT = 3001;
+const PORT = isProduction ? 5000 : 3001;
+
+if (isProduction) {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(clientPath, 'index.html'));
+  });
+}
 
 async function start() {
   await initDb();
