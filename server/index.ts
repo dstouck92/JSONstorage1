@@ -114,6 +114,95 @@ async function loadDemoData() {
   console.log(`Loaded ${totalRecords} total records`);
 }
 
+async function syncAllUsersFromFiles() {
+  console.log('Syncing all users from JSON files...');
+  
+  const files = fs.readdirSync('.').filter(f => 
+    f.startsWith('User_') && f.includes('Streaming_History_Audio') && f.endsWith('.json')
+  );
+  
+  const userFilesMap: Record<string, string[]> = {};
+  
+  for (const file of files) {
+    const match = file.match(/^User_(.+?)_Streaming_History_Audio/);
+    if (match) {
+      const rawName = match[1].replace(/_/g, ' ').trim();
+      if (!userFilesMap[rawName]) {
+        userFilesMap[rawName] = [];
+      }
+      userFilesMap[rawName].push(file);
+    }
+  }
+  
+  for (const [username, userFiles] of Object.entries(userFilesMap)) {
+    try {
+      let userResult = await pool.query('SELECT id FROM users WHERE username ILIKE $1', [username]);
+      let userId: number;
+      
+      if (userResult.rows.length === 0) {
+        const insertResult = await pool.query(
+          'INSERT INTO users (username, avatar) VALUES ($1, $2) RETURNING id',
+          [username, 'goat']
+        );
+        userId = insertResult.rows[0].id;
+        console.log(`Created user: ${username} (ID: ${userId})`);
+      } else {
+        userId = userResult.rows[0].id;
+      }
+      
+      const countResult = await pool.query('SELECT COUNT(*) FROM streaming_history WHERE user_id = $1', [userId]);
+      if (parseInt(countResult.rows[0].count) > 0) {
+        console.log(`User ${username} already has data, skipping...`);
+        continue;
+      }
+      
+      let totalRecords = 0;
+      for (const file of userFiles) {
+        try {
+          const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+          const validRecords = data.filter((r: any) => r.master_metadata_track_name && r.ms_played > 0);
+          
+          const BATCH_SIZE = 500;
+          for (let i = 0; i < validRecords.length; i += BATCH_SIZE) {
+            const batch = validRecords.slice(i, i + BATCH_SIZE);
+            const values: any[] = [];
+            const placeholders: string[] = [];
+            
+            batch.forEach((record: any, idx: number) => {
+              const offset = idx * 8;
+              placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`);
+              values.push(
+                userId,
+                record.ts,
+                record.master_metadata_track_name,
+                record.master_metadata_album_artist_name,
+                record.master_metadata_album_album_name,
+                record.ms_played,
+                record.spotify_track_uri,
+                record.platform
+              );
+            });
+            
+            await pool.query(
+              `INSERT INTO streaming_history (user_id, ts, track_name, artist_name, album_name, ms_played, spotify_track_uri, platform)
+               VALUES ${placeholders.join(', ')}`,
+              values
+            );
+            totalRecords += batch.length;
+          }
+        } catch (e) {
+          console.error(`Error processing ${file}:`, e);
+        }
+      }
+      console.log(`Imported ${totalRecords} records for ${username}`);
+    } catch (e) {
+      console.error(`Error syncing user ${username}:`, e);
+    }
+  }
+  
+  console.log('User sync complete!');
+}
+
 app.post('/api/auth/signup', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -585,13 +674,13 @@ if (isProduction) {
 
 async function start() {
   await initDb();
-  await ensureDemoUser();
   
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`API server running on http://0.0.0.0:${PORT}`);
   });
   
-  loadDemoData().catch(console.error);
+  // Auto-sync all users from JSON files on startup
+  syncAllUsersFromFiles().catch(console.error);
 }
 
 start().catch(console.error);
