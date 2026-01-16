@@ -1,0 +1,71 @@
+Name: Herd
+The name of the app is a play on words - It encompasses both the idea of a group of fans following their favorite artist (Like a herd of goats following a shepherd), as well as measuring fandom and tracking what fans have “heard” (Like the music they’ve listened to, concerts they’ve attended, or merchandise they’ve purchased). 
+
+Style:
+The vibe of the website should be modern, premium, data-driven, and sprinkled with “herd” related imagery, inspired by Spotify Wrapped (eg Top Artists, Total Streams), Beli leaderboards (eg Gamified, Social environment), and fan club communities (eg. WeVerse, Discord). 
+
+Color Scheme: 
+Blue-to-Green fade from top to bottom, creatively representing a blue sky with some clouds, fading into green fields below. Generally, a green and blue themed app, but distinct from Spotify and Meta, and leaning on “Herd related imagery such as the outdoors, fields, and animals.  
+
+Logo: 
+Attachment titled “Herd Logo”
+
+Tagline:
+Prove you’re the Goat. 
+
+Core Functionality: 
+The initial test version of Herd will allow users to 1) Summarize, view and share their own Spotify listening history; 2) View and comment on other user’s Spotify listening history; and 3) See public leaderboards that show which users have listened to which artists the most. 
+
+Desired Data Sources: 
+- Spotify Extended Listening History Reports
+    - Here is a link to where the data will be stored: https://github.com/dstouck92/JSONstorage1
+    - This is the sample set of data files for one user, and there will be hundreds of other files uploaded to this folder that will need to be fetched to feed the app. 
+    - You need to review the files included in this folder and intuitively pull the data points required for building the app. Future user uploads will add hundreds more files to this folder, structured in the format of the file titled “User_David Stouck_Streaming_History_Audio_2025-2026_6” but reflecting multiple different users and year’s of Spotify listening data. 
+    - Each user will upload data that will mirror the data structure of the files included in this folder. You need to be able to sort each upload so that it pertains to an individual user identified by their user name. 
+    - with a sample set of data files that will typically be included in a data folder named “Spotify Extended Streaming History” for future user uploads. Since Claude does not allow me to upload a folder, I have attached two files from the sample folder of data separately and they are titled as follows: 1) “ReadMeFirst_ExtendedStreamingHistory”, 2) “Streaming_History_Audio_2025-2026_6”
+    - I have attached a sample set of data files that will typically be included in a data folder named “Spotify Extended Streaming History” for future user uploads. Since Claude does not allow me to upload a folder, I have attached each file that was included in this sample folder of data separately and they are titled as follows: 1) “ReadMeFirst_ExtendedStreamingHistory”, 2) “Streaming_History_Audio_2012-2017_0”, 3) “Streaming_History_Audio_2017-2018_1”, 4) “Streaming_History_Audio_2018-2020_2”, 5) “Streaming_History_Audio_2020-2021_3”, 6) “Streaming_History_Audio_2021-2023_4”, 7) “Streaming_History_Audio_2023-2025_5”, 8) “Streaming_History_Audio_2025-2026_6”, 9) “Streaming_History_Video_2017-2026”
+
+Data Storage Requirements: 
+- You need to create a seemless uploading process for users to submit their data and “join” the app. Ideally, this would be a standalone website link where users can upload their folder of data, or if easier, a “upload here” link that users are prompted to click on when setting up the profile and joining the initial test version of the app. 
+- Users must be able to upload their Spotify Extended Listening Report ideally via drag-and-drop such that you automatically add their Spotify data to the back-end of the app and integrate their listening history onto 1) their fan profile overview, and 2) all artist leaderboards on the app. 
+
+Update Frequency and Method: 
+- Whenever a new Spotify Extended Listening Report is added to the app’s database, the app should automatically update and synchronize the data onto all artist leaderboards. Similarly, if a Spotify Extended Listening Report is removed from the database, the website should remove that user’s data from the leaderboards. 
+
+Lay-Out: 
+- User Profile (Attachment titled “User Profile Reference”)
+    * Center-Top: User profile card (User Name + Drop Down menu of 8-10 animal face emoji avatars that user can select from) 
+    * Right-Top: Search Bar where users can search for users on platform - labeled “Search fans”
+        * Clicking into another fan’s name will navigate to that fan’s profile
+    * Left-Top
+        * Date profile created
+    * Center Middle: Key stats 
+        * Left-middle: Total Minutes listened on Spotify
+        * Right-middle: Total Songs streamed on Spotify
+    * Center-Middle to Bottom: 
+        * Top Artists: List of top 10 artists listened to (ranked by total listening time) 
+        * Top Songs: List of top 10 songs listened to (ranked by total listening time) 
+        * Top Genres: List of top 10 genres listened to (ranked by total listening time) 
+    * Bottom of screen 
+        * Left-side: Tab to select “Fans” (ie User Profiles)
+        * Right-side: Tab to select “Artists” (ie Leaderboards)
+- Artist Profile / Leaderboard (Attachment titled “Artist Leaderboard Reference”) 
+    * Center-Top: Artist name and Spotify Image (Use same format for Podcasts and Audiobooks)
+    * Right-Top: Search Bar where users can search for any artist on Spotify - labeled “Search artists” (Also allows for searching of Podcasts or Audiobooks)
+        * Searching and clicking an artist name navigates to that artist’s leaderboard, which shows the top 10 users ranked by total time they’ve listened to that artist
+    * Center-Middle: Leaderboard
+        * Ranking of top 10 listeners by total time listening to that artist (First place should have a miniature version of the Herd Logo - Goat Face - next to their username)
+        * Username
+        * Minutes listened
+        * Songs Streamed
+        * Also spotlight the current user’s ranking
+    * Comment section below leaderboard:
+        * Fans can add a comment via text input
+        * Fans can “like” other user’s comments (by clicking on a heart)
+        * List of recent comments and # of likes for each
+- Other User Profiles
+    * When users search for another user, they can view the profile of other users (Styled in same format as the current user’s profile)
+    * Clickable artist cards that navigate to artist leaderboards
+
+Final Points:
+- Tell me what questions you need to make your prompt as effective as possible. For instance, what areas of uncertainty do you want to clarify? 
