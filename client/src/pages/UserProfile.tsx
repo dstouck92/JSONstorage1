@@ -122,12 +122,6 @@ export default function UserProfile() {
               Member since {new Date(data.user.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
             </p>
           </div>
-          <Link 
-            to="/upload"
-            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
-          >
-            Upload Data
-          </Link>
         </div>
         
         {authUser && !authUser.hasPassword && (

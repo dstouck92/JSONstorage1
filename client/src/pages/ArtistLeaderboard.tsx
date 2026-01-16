@@ -149,7 +149,7 @@ export default function ArtistLeaderboard() {
                 <div className="flex-1">
                   <p className="font-medium text-gray-800 flex items-center gap-2">
                     {entry.username}
-                    {entry.rank === 1 && <span>🐐</span>}
+                    {entry.rank === 1 && <img src="/herd-logo.png" alt="GOAT" className="w-5 h-5" />}
                     {entry.isCurrentUser && (
                       <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">You</span>
                     )}
