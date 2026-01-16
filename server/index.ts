@@ -52,9 +52,17 @@ app.use(authMiddleware);
 async function syncAllUsersFromFiles() {
   console.log('Syncing all users from JSON files (clean reimport)...');
   
-  const files = fs.readdirSync('.').filter(f => 
+  // Use project root directory (one level up from dist/server or server/)
+  const projectRoot = path.resolve(__dirname, '..');
+  console.log(`Looking for JSON files in: ${projectRoot}`);
+  
+  const allFiles = fs.readdirSync(projectRoot);
+  console.log(`Found ${allFiles.length} files in project root`);
+  
+  const files = allFiles.filter(f => 
     f.startsWith('User_') && f.includes('Streaming_History_Audio') && f.endsWith('.json')
   );
+  console.log(`Found ${files.length} streaming history files`);
   
   const userFilesMap: Record<string, string[]> = {};
   
@@ -92,7 +100,8 @@ async function syncAllUsersFromFiles() {
       let totalRecords = 0;
       for (const file of userFiles) {
         try {
-          const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+          const filePath = path.join(projectRoot, file);
+          const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
           const validRecords = data.filter((r: any) => r.master_metadata_track_name && r.ms_played > 0);
           
           const BATCH_SIZE = 500;
