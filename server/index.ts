@@ -50,7 +50,7 @@ function authMiddleware(req: AuthRequest, res: express.Response, next: express.N
 app.use(authMiddleware);
 
 async function syncAllUsersFromFiles() {
-  console.log('Syncing all users from JSON files...');
+  console.log('Syncing all users from JSON files (clean reimport)...');
   
   const files = fs.readdirSync('.').filter(f => 
     f.startsWith('User_') && f.includes('Streaming_History_Audio') && f.endsWith('.json')
@@ -69,6 +69,10 @@ async function syncAllUsersFromFiles() {
     }
   }
   
+  // Clear all streaming history and reimport fresh to fix any data corruption
+  console.log('Clearing existing streaming history for clean reimport...');
+  await pool.query('DELETE FROM streaming_history');
+  
   for (const [username, userFiles] of Object.entries(userFilesMap)) {
     try {
       let userResult = await pool.query('SELECT id FROM users WHERE username ILIKE $1', [username]);
@@ -83,12 +87,6 @@ async function syncAllUsersFromFiles() {
         console.log(`Created user: ${username} (ID: ${userId})`);
       } else {
         userId = userResult.rows[0].id;
-      }
-      
-      const countResult = await pool.query('SELECT COUNT(*) FROM streaming_history WHERE user_id = $1', [userId]);
-      if (parseInt(countResult.rows[0].count) > 0) {
-        console.log(`User ${username} already has data, skipping...`);
-        continue;
       }
       
       let totalRecords = 0;
